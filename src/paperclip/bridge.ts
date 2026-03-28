@@ -14,18 +14,34 @@ export class PaperclipBridge {
 
   private async request<T>(path: string, options: RequestInit = {}): Promise<T> {
     const url = `${this.baseUrl}${path}`;
-    const response = await fetch(url, {
-      ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.apiKey}`,
-        ...options.headers,
-      },
-    });
-    if (!response.ok) {
-      throw new Error(`Paperclip API error: ${response.status} ${response.statusText}`);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
+    try {
+      const response = await fetch(url, {
+        ...options,
+        signal: controller.signal,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.apiKey}`,
+          ...options.headers,
+        },
+      });
+      clearTimeout(timeoutId);
+      if (!response.ok) {
+        throw new Error(`Paperclip API error: ${response.status} ${response.statusText}`);
+      }
+      const text = await response.text();
+      if (!text) {
+        return undefined as T;
+      }
+      return JSON.parse(text) as T;
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error('Paperclip API error: Request timed out after 30 seconds');
+      }
+      throw new Error(`Paperclip API error: ${error instanceof Error ? error.message : String(error)}`);
     }
-    return response.json() as T;
   }
 
   async createIssue(challenge: Task): Promise<string> {

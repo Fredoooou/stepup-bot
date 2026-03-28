@@ -46,4 +46,35 @@ describe('PaperclipBridge', () => {
     // Should not throw (may fail network but shouldn't error on call)
     await expect(bridge.emitEvidence('issue-123', step)).resolves.not.toThrow();
   });
+
+  it('finalizeIssue does not throw on success', async () => {
+    vi.spyOn(global, 'fetch').mockResolvedValueOnce(
+      new Response(null, { status: 200 })
+    );
+    await expect(bridge.finalizeIssue('issue-123')).resolves.not.toThrow();
+  });
+
+  it('getPendingIssues returns array of issues', async () => {
+    const mockIssues = [
+      { id: 'issue-1', status: 'pending', title: 'Issue 1' },
+      { id: 'issue-2', status: 'pending', title: 'Issue 2' },
+    ];
+    vi.spyOn(global, 'fetch').mockResolvedValueOnce(
+      new Response(JSON.stringify(mockIssues), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    );
+    const result = await bridge.getPendingIssues();
+    expect(result).toHaveLength(2);
+    expect(result[0].id).toBe('issue-1');
+    expect(result[1].status).toBe('pending');
+  });
+
+  it('claimIssue does not throw on success', async () => {
+    vi.spyOn(global, 'fetch').mockResolvedValueOnce(
+      new Response(null, { status: 200 })
+    );
+    await expect(bridge.claimIssue('issue-123')).resolves.not.toThrow();
+  });
 });
