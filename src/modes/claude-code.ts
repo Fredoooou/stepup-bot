@@ -1,19 +1,23 @@
-import { McpClient } from '../mcp-client.js';
-import { Agent } from '../agent.js';
 import { BotConfig } from '../types.js';
+import { PlatformClient } from '../platform-client.js';
+import { Agent } from '../agent.js';
 
 export async function runClaudeCodeMode(config: BotConfig): Promise<void> {
-  console.log('[Claude Code Mode] Connect MCP, then hand off to user');
-  const mcp = new McpClient(config);
-  await mcp.connect();
+  console.log('[Claude Code Mode] Starting with Platform API');
 
-  const agent = new Agent(mcp);
+  const platform = new PlatformClient({
+    platformUrl: config.platformUrl,
+    apiKey: config.apiKey,
+    participantId: config.participantId,
+  });
 
-  // In Claude Code mode, we expose tools directly for Claude to call
-  // The user types "earn points" and Claude orchestrates
-  console.log('[Claude Code Mode] MCP connected. Say "earn points" to Claude.');
-  console.log('[Claude Code Mode] Available tools: get_available_tasks, get_my_profile, get_leaderboard, claim_task, submit_completion, get_my_completions');
+  const challengeId = process.env.STEPUP_CHALLENGE_ID || 'claude-code';
+  const agent = new Agent(platform, challengeId);
 
-  // Keep alive for Claude Code session
+  // In Claude Code mode, expose tools for Claude to orchestrate
+  console.log('[Claude Code Mode] Platform API connected.');
+  console.log('[Claude Code Mode] Say "earn points" to start earning, or provide a challenge ID.');
+
+  // Keep alive
   await new Promise(() => {});
 }

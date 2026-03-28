@@ -1,41 +1,51 @@
-import { McpClient } from './mcp-client.js';
-import { Task, EvidenceStep } from './types.js';
+import { PlatformClient, ChallengeTask } from './platform-client.js';
 import { PaperclipBridge } from './paperclip/bridge.js';
 import { EvidenceLogger } from './paperclip/evidence-logger.js';
+import { EvidenceStep } from './types.js';
 
 export class Agent {
   private paperclipBridge: PaperclipBridge | null = null;
   private evidenceLogger: EvidenceLogger | null = null;
   private currentIssueId: string | null = null;
+  private challengeId: string;
 
-  constructor(private mcp: McpClient) {}
+  constructor(
+    private platform: PlatformClient,
+    challengeId: string
+  ) {
+    this.challengeId = challengeId;
+  }
 
   async earnPoints(maxTasks: number = 5): Promise<void> {
     console.log('[Agent] Starting earn-points loop');
 
     for (let i = 0; i < maxTasks; i++) {
-      const tasksResult = await this.mcp.callTool('get_available_tasks', {});
-      const openTasks: Task[] = tasksResult.tasks?.filter((t: Task) => t.status === 'open') ?? [];
+      const tasks = await this.platform.getAvailableTasks(this.challengeId);
+      const openTasks = tasks.filter((t: ChallengeTask) => t.status === 'open');
 
       if (openTasks.length === 0) {
         console.log('[Agent] No open tasks available');
         break;
       }
 
-      const profile = await this.mcp.callTool('get_my_profile', {});
-      console.log(`[Agent] Current score: ${profile.score}, rank: ${profile.rank}`);
+      try {
+        const profile = await this.platform.getProfile();
+        console.log(`[Agent] Current score: ${profile.score}, rank: ${profile.rank}`);
+      } catch {
+        // Profile may not be available
+      }
 
       // Sort by points descending, pick highest
       const picked = [...openTasks].sort((a, b) => b.points - a.points)[0];
       console.log(`[Agent] Picking task: ${picked.title} (${picked.points} pts)`);
 
-      await this.completeChallenge(picked.task_id);
+      await this.completeChallenge(picked.task_id, picked);
     }
 
     console.log('[Agent] Loop complete');
   }
 
-  async completeChallenge(challengeId: string): Promise<void> {
+  async completeChallenge(taskId: string, task?: ChallengeTask): Promise<void> {
     // Reset state at start of each challenge
     this.paperclipBridge = null;
     this.evidenceLogger = null;
@@ -49,21 +59,33 @@ export class Agent {
     }
 
     // Claim task
-    await this.mcp.callTool('claim_task', { task_id: challengeId });
+    try {
+      await this.platform.claimChallenge(this.challengeId);
+    } catch (err) {
+      console.warn('[Agent] Could not claim challenge (may already be claimed):', err);
+    }
 
-    // Get task details
-    const tasksResult = await this.mcp.callTool('get_available_tasks', {});
-    const allTasks: Task[] = tasksResult.tasks ?? [];
-    const task = allTasks.find((t: Task) => t.task_id === challengeId);
+    // Get task details if not provided
+    if (!task) {
+      const tasks = await this.platform.getAvailableTasks(this.challengeId);
+      task = tasks.find((t: ChallengeTask) => t.task_id === taskId);
+    }
 
     if (!task) {
-      throw new Error(`Task ${challengeId} not found`);
+      throw new Error(`Task ${taskId} not found`);
     }
 
     // Create Paperclip issue if bridge is available
     if (this.paperclipBridge) {
       try {
-        this.currentIssueId = await this.paperclipBridge.createIssue(task);
+        this.currentIssueId = await this.paperclipBridge.createIssue({
+          task_id: task.task_id,
+          title: task.title,
+          description: task.description,
+          phase_label: null,
+          points: task.points,
+          status: 'open',
+        });
         this.evidenceLogger = new EvidenceLogger(this.paperclipBridge, this.currentIssueId);
         await this.paperclipBridge.claimIssue(this.currentIssueId);
       } catch (err) {
@@ -73,7 +95,13 @@ export class Agent {
     }
 
     // Log the claim step
-    await this.logEvidence({ skill: 'claim_task', files: [], tools: ['claim_task'], prompt: `claim_task ${challengeId}`, result: 'claimed' });
+    await this.logEvidence({
+      skill: 'claim_task',
+      files: [],
+      tools: ['claim_task'],
+      prompt: `claim_task ${taskId}`,
+      result: 'claimed',
+    });
 
     // Generate completion evidence
     const evidenceText = await this.generateEvidence(task);
@@ -89,13 +117,14 @@ export class Agent {
     });
 
     // Submit completion
-    const result = await this.mcp.callTool('submit_completion', {
-      task_id: challengeId,
-      evidence_text: evidenceText,
-      evidence_url: evidenceUrl,
-    });
+    const result = await this.platform.submitCompletion(
+      this.challengeId,
+      taskId,
+      evidenceText,
+      evidenceUrl
+    );
 
-    console.log(`[Agent] Submitted: ${challengeId}, awarded ${result.points_awarded} pts`);
+    console.log(`[Agent] Submitted: ${taskId}, awarded ${result.points_awarded} pts`);
 
     // Finalize Paperclip issue
     if (this.paperclipBridge && this.currentIssueId) {
@@ -113,11 +142,11 @@ export class Agent {
     }
   }
 
-  private async generateEvidence(task: Task): Promise<string> {
+  private async generateEvidence(task: ChallengeTask): Promise<string> {
     return `Completed task: ${task.title}. ${task.description}`;
   }
 
-  private async generateEvidenceUrl(task: Task): Promise<string | undefined> {
+  private async generateEvidenceUrl(_task: ChallengeTask): Promise<string | undefined> {
     return undefined;
   }
 }

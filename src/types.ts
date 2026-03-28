@@ -1,8 +1,9 @@
 export interface BotConfig {
   platformUrl: string;
   apiKey: string;
-  mcpUrl: string;
-  mode: 'claude-code' | 'agent';
+  participantId: string;
+  mcpUrl?: string;
+  mode?: 'claude-code' | 'agent';
 }
 
 export interface Task {

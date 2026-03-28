@@ -1,6 +1,6 @@
 import * as readline from 'readline';
 import { BotConfig } from '../types.js';
-import { McpClient } from '../mcp-client.js';
+import { PlatformClient } from '../platform-client.js';
 import { Agent } from '../agent.js';
 
 export async function runInteractiveMode(config: BotConfig): Promise<void> {
@@ -8,8 +8,11 @@ export async function runInteractiveMode(config: BotConfig): Promise<void> {
 
   console.log('[Interactive Mode] Starting. Type a challenge ID to work on, or "earn" for continuous mode, "quit" to exit.');
 
-  const mcp = new McpClient(config);
-  await mcp.connect();
+  const platform = new PlatformClient({
+    platformUrl: config.platformUrl,
+    apiKey: config.apiKey,
+    participantId: config.participantId,
+  });
 
   try {
     while (true) {
@@ -22,18 +25,22 @@ export async function runInteractiveMode(config: BotConfig): Promise<void> {
       }
 
       if (answer.toLowerCase() === 'earn') {
-        const agent = new Agent(mcp);
+        const challengeId = process.env.STEPUP_CHALLENGE_ID;
+        if (!challengeId) {
+          console.log('STEPUP_CHALLENGE_ID not set, cannot run earn mode');
+          continue;
+        }
+        const agent = new Agent(platform, challengeId);
         await agent.earnPoints(Infinity);
         break;
       }
 
       if (answer.trim()) {
-        const agent = new Agent(mcp);
+        const agent = new Agent(platform, answer.trim());
         await agent.completeChallenge(answer.trim());
       }
     }
   } finally {
     rl.close();
-    await mcp.disconnect();
   }
 }
