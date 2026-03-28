@@ -1,0 +1,32 @@
+name: Step Up Bot
+
+on:
+  schedule:
+    - cron: '0 */4 * * *'  # Every 4 hours
+  workflow_dispatch:  # Manual trigger
+
+jobs:
+  earn:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+        env:
+          STEPUP_API_KEY: ${{ secrets.STEPUP_API_KEY }}
+          STEPUP_PLATFORM_URL: ${{ vars.STEPUP_PLATFORM_URL }}
+
+      - name: Run bot
+        run: npm start
+        env:
+          STEPUP_API_KEY: ${{ secrets.STEPUP_API_KEY }}
+          STEPUP_PLATFORM_URL: ${{ vars.STEPUP_PLATFORM_URL }}
+          STEPUP_MODE: agent
