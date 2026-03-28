@@ -80,9 +80,14 @@ export class PaperclipRunner {
     this.process.kill('SIGTERM');
     await new Promise(resolve => {
       const proc = this.process;
+      const timeout = setTimeout(() => resolve(undefined), 5000);
       if (proc) {
-        proc.once('exit', resolve);
+        proc.once('exit', () => {
+          clearTimeout(timeout);
+          resolve(undefined);
+        });
       } else {
+        clearTimeout(timeout);
         resolve(undefined);
       }
     });
