@@ -5,6 +5,10 @@ import { Agent } from './agent.js';
 import { BotConfig } from './types.js';
 import { runClaudeCodeMode } from './modes/claude-code.js';
 import { runGithubActionsMode } from './modes/github-actions.js';
+import { runOneShotMode } from './modes/one-shot.js';
+import { runEarnMode } from './modes/earn.js';
+import { runInteractiveMode } from './modes/interactive.js';
+import { PaperclipRunner } from './paperclip/runner.js';
 
 function loadConfig(): BotConfig {
   const apiKey = process.env.STEPUP_API_KEY;
@@ -19,22 +23,44 @@ function loadConfig(): BotConfig {
   };
 }
 
+async function startPaperclip(): Promise<PaperclipRunner> {
+  const runner = new PaperclipRunner({
+    paperclipDir: process.env.PAPERCLIP_DIR || undefined,
+    port: parseInt(process.env.PAPERCLIP_PORT || '3100'),
+  });
+  await runner.start();
+  await runner.waitForReady();
+  return runner;
+}
+
 async function main() {
   const config = loadConfig();
   const args = process.argv.slice(2);
-  const mode = args.includes('--claude-code') ? 'claude-code' : config.mode;
-  const maxTasksArg = args.find(a => a.startsWith('--max-tasks='));
-  const maxTasks = maxTasksArg ? parseInt(maxTasksArg.split('=')[1]) : 5;
 
-  console.log(`[stepup-bot] Starting in ${mode} mode`);
-  const mcp = new McpClient(config);
-  await mcp.connect();
+  // Determine mode
+  const challengeArg = args.find((a) => a.startsWith('--challenge='));
+  const isEarnMode = args.includes('--earn');
+
+  let paperclipRunner: PaperclipRunner | null = null;
 
   try {
-    const agent = new Agent(mcp);
-    await agent.earnPoints(maxTasks);
+    // Start Paperclip for all modes
+    if (!process.env.PAPERCLIP_SKIP_START) {
+      paperclipRunner = await startPaperclip();
+    }
+
+    if (challengeArg) {
+      const challengeId = challengeArg.split('=')[1];
+      await runOneShotMode(config, challengeId);
+    } else if (isEarnMode) {
+      await runEarnMode(config);
+    } else {
+      await runInteractiveMode(config);
+    }
   } finally {
-    await mcp.disconnect();
+    if (paperclipRunner) {
+      await paperclipRunner.stop();
+    }
   }
 }
 
