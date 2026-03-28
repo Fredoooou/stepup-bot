@@ -1,8 +1,7 @@
 import { McpClient } from './mcp-client.js';
-import { Task } from './types.js';
+import { Task, EvidenceStep } from './types.js';
 import { PaperclipBridge } from './paperclip/bridge.js';
 import { EvidenceLogger } from './paperclip/evidence-logger.js';
-import { EvidenceAssembler } from './paperclip/evidence-assembler.js';
 
 export class Agent {
   private paperclipBridge: PaperclipBridge | null = null;
@@ -37,6 +36,11 @@ export class Agent {
   }
 
   async completeChallenge(challengeId: string): Promise<void> {
+    // Reset state at start of each challenge
+    this.paperclipBridge = null;
+    this.evidenceLogger = null;
+    this.currentIssueId = null;
+
     // Set up Paperclip integration
     const apiUrl = process.env.PAPERCLIP_API_URL || 'http://localhost:3100';
     const apiKey = process.env.PAPERCLIP_API_KEY;
