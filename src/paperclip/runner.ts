@@ -78,6 +78,14 @@ export class PaperclipRunner {
     if (!this.process) return;
     console.log('[PaperclipRunner] Stopping Paperclip');
     this.process.kill('SIGTERM');
+    await new Promise(resolve => {
+      const proc = this.process;
+      if (proc) {
+        proc.once('exit', resolve);
+      } else {
+        resolve(undefined);
+      }
+    });
     this.process = null;
   }
 
